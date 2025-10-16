@@ -1,0 +1,131 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: egress-default
+  labels:
+    env: default
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: egress-dev
+  labels:
+    env: dev
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: egress-prod
+  labels:
+    env: prod
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: egressips-prod
+spec:
+  egressIPs:
+  - 10.14.10.100
+  namespaceSelector:
+    matchLabels:
+      env: prod
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: egressips-dev
+spec:
+  egressIPs:
+  - 10.14.10.101
+  namespaceSelector:
+    matchExpressions:
+    - key: env
+      operator: Exists
+    - key: env
+      operator: NotIn
+      values:
+      - prod
+  podSelector:
+    matchExpressions:
+    - key: env
+      operator: In 
+      values:
+      - dev
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressIP
+metadata:
+  name: egressips-default
+spec:
+  egressIPs:
+  - 10.14.10.102
+  namespaceSelector:
+    matchExpressions:
+    - key: env
+      operator: Exists
+    - key: env
+      operator: NotIn
+      values:
+      - prod
+  podSelector:
+    matchExpressions:
+    - key: env
+      operator: NotIn 
+      values:
+      - dev
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-default
+  namespace: egress-default
+  labels:
+    demo: egress
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-dev
+  namespace: egress-dev
+  labels:
+    demo: egress
+    env: dev
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-prod
+  namespace: egress-prod
+  labels:
+    demo: egress
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true

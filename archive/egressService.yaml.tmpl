@@ -1,0 +1,392 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metallb-system
+spec: {}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: metallb-operator
+  namespace: metallb-system
+spec: {}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: metallb-operator-sub
+  namespace: metallb-system
+spec:
+  name: metallb-operator
+  channel: "stable"
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+---
+apiVersion: metallb.io/v1beta1
+kind: MetalLB
+metadata:
+  name: metallb
+  namespace: metallb-system
+spec: {}
+---
+apiVersion: metallb.io/v1beta1
+kind: BFDProfile
+metadata:
+  name: bfd-tuning
+  namespace: metallb-system
+spec:
+  detectMultiplier: 37
+  echoMode: true
+  minimumTtl: 10
+  passiveMode: true
+  receiveInterval: 35
+  transmitInterval: 35
+---
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: external-router
+  namespace: metallb-system
+spec:
+  peerAddress: 10.14.10.98
+  peerASN: 65001
+  myASN: 6451INDEX
+  bfdProfile: bfd-tuning
+  disableMP: true
+  holdTime: 9s
+  keepaliveTime: 3s
+  nodeSelectors:
+  - matchLabels:
+      k8s.ovn.org/egress-assignable: ""
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ip-pool-prod-app1
+  namespace: metallb-system
+spec:
+  autoAssign: false
+  addresses:
+  - 10.14.10.1INDEX2/32
+  - 10.14.10.1INDEX3/32
+  - 10.14.10.1INDEX4/32
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ip-pool-prod-app2
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.14.10.1INDEX5/32
+  - 10.14.10.1INDEX6/32
+  - 10.14.10.1INDEX7/32
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ip-pool-nonprod
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.14.10.1INDEX8/32
+  - 10.14.10.1INDEX9/32
+  - 10.14.10.1INDEX1/32
+  - 10.14.10.1INDEX0/32
+---
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: ip-pool-prod-app1-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - ip-pool-prod-app1
+  peers:
+  - external-router
+  nodeSelectors:
+  - matchLabels:
+      egress-service.k8s.ovn.org/egress-service-prod-egress-service-app1: ""
+---
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: ip-pool-prod-app2-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - ip-pool-prod-app2
+  peers:
+  - external-router
+  nodeSelectors:
+  - matchLabels:
+      egress-service.k8s.ovn.org/egress-service-prod-egress-service-app2: ""
+---
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: ip-pool-nonprod-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - ip-pool-nonprod
+  peers:
+  - external-router
+  nodeSelectors:
+  - matchLabels:
+      egress-service.k8s.ovn.org/egress-service-nonprod-egress-service-app1: ""
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: egress-service-prod
+  labels:
+    env: prod
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: egress-service-nonprod
+  labels:
+    env: nonprod
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressService
+metadata:
+  name: egress-service-app1      # match load-balancer name
+  namespace: egress-service-prod # match load-balancer namespace
+spec:
+  sourceIPBy: "LoadBalancerIP"
+  nodeSelectors:
+    matchLabels:
+      k8s.ovn.org/egress-assignable: ""
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressService
+metadata:
+  name: egress-service-app2      # match load-balancer name
+  namespace: egress-service-prod # match load-balancer namespace
+spec:
+  sourceIPBy: "LoadBalancerIP"
+  nodeSelectors:
+    matchLabels:
+      k8s.ovn.org/egress-assignable: ""
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressService
+metadata:
+  name: egress-service-app1         # match load-balancer name
+  namespace: egress-service-nonprod # match load-balancer namespace
+spec:
+  sourceIPBy: "LoadBalancerIP"
+  nodeSelectors:
+    matchLabels:
+      k8s.ovn.org/egress-assignable: ""
+---
+apiVersion: k8s.ovn.org/v1
+kind: EgressService
+metadata:
+  name: egress-service-app2         # match load-balancer name
+  namespace: egress-service-nonprod # match load-balancer namespace
+spec:
+  sourceIPBy: "LoadBalancerIP"
+  nodeSelectors:
+    matchLabels:
+      k8s.ovn.org/egress-assignable: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-service-app1      # match egress-service name
+  namespace: egress-service-prod # match egress-sservice namespace
+  annotations:
+    metallb.io/allow-shared-ip: "ip-pool-prod-app1"
+    metallb.io/address-pool: "ip-pool-prod-app1"
+spec:
+  type: LoadBalancer
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: app1
+    env: prod
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-prod-app1
+  namespace: egress-service-prod
+  labels:
+    demo: egress
+    app: app1
+    env: prod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-service-app2      # match egress-service name
+  namespace: egress-service-prod # match egress-sservice namespace
+  annotations:
+    metallb.universe.tf/allow-shared-ip: "ip-pool-prod-app2"
+    metallb.io/address-pool: "ip-pool-prod-app2"
+spec:
+  type: LoadBalancer
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: app2
+    env: prod
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-prod-app2
+  namespace: egress-service-prod
+  labels:
+    demo: egress
+    app: app2
+    env: prod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-service-nonprod-app1 # match egress-service name
+  namespace: egress-service-nonprod # match egress-sservice namespace
+  annotations:
+    metallb.universe.tf/allow-shared-ip: "ip-pool-nonprod"
+    metallb.io/address-pool: "ip-pool-nonprod"
+spec:
+  type: LoadBalancer
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: app1
+    env: nonprod
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-nonprod-app1
+  namespace: egress-service-nonprod
+  labels:
+    demo: egress
+    app: app1
+    env: nonprod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-service-nonprod-app2 # match egress-service name
+  namespace: egress-service-nonprod # match egress-sservice namespace
+  annotations:
+    metallb.universe.tf/allow-shared-ip: "ip-pool-nonprod"
+    metallb.io/address-pool: "ip-pool-nonprod"
+spec:
+  type: LoadBalancer
+  sessionAffinity: None
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: app2
+    env: nonprod
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ping-test-nonprod-app2
+  namespace: egress-service-nonprod
+  labels:
+    demo: egress
+    app: app2
+    env: nonprod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: busybox
+    image: docker.io/library/busybox:latest
+    command: ["sh", "-c", "ping 10.14.10.99"]
+    securityContext:
+      privileged: true
+      runAsUser: 1000
+      runAsNonRoot: true
