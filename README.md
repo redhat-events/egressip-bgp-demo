@@ -1,5 +1,3 @@
-This is a detailed README based on the content of your video demo and the files listed in the `redhat-events/egressip-bgp-demo` repository.
-
 -----
 
 # EgressIP with BGP Demo on OpenShift
